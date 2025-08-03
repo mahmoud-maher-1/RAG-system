@@ -2,19 +2,18 @@ package org.ragsys;
 
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.segment.TextSegment;
-import dev.langchain4j.model.chat.ChatLanguageModel;
-import dev.langchain4j.model.embedding.AllMiniLmL6V2EmbeddingModel;
+import dev.langchain4j.model.chat.ChatModel;
+import dev.langchain4j.model.embedding.onnx.allminilml6v2.AllMiniLmL6V2EmbeddingModel;
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.model.ollama.OllamaChatModel;
 import dev.langchain4j.store.embedding.EmbeddingMatch;
+import dev.langchain4j.store.embedding.EmbeddingSearchRequest;
+import dev.langchain4j.store.embedding.EmbeddingSearchResult;
 import dev.langchain4j.store.embedding.EmbeddingStore;
 import dev.langchain4j.store.embedding.milvus.MilvusEmbeddingStore;
 
-import java.util.List;
-import java.util.stream.Collectors;
-
 public class RagPipeline {
-    private final ChatLanguageModel chatModel;
+    private final ChatModel chatModel;
     private final EmbeddingModel embeddingModel;
     private final EmbeddingStore<TextSegment> embeddingStore;
 
@@ -39,13 +38,15 @@ public class RagPipeline {
         Embedding questionEmbedding = embeddingModel.embed(question).content();
 
         // Retrieve relevant documents
-        List<EmbeddingMatch<TextSegment>> relevant = embeddingStore
-                .findRelevant(questionEmbedding, 3);
+        EmbeddingSearchRequest searchRequest = EmbeddingSearchRequest.builder()
+                .queryEmbedding(questionEmbedding)
+                .maxResults(1)
+                .build();
+        EmbeddingSearchResult<TextSegment> searchResult = embeddingStore.search(searchRequest);
+        EmbeddingMatch<TextSegment> embeddingMatch = searchResult.matches().getFirst();
 
         // Format context
-        String context = relevant.stream()
-                .map(match -> match.embedded().text())
-                .collect(Collectors.joining("\n\n"));
+        String context = embeddingMatch.embedded().text();
 
         // Build prompt with context
         String prompt = String.format(
@@ -57,7 +58,7 @@ public class RagPipeline {
         );
 
         // Generate response
-        String response = chatModel.generate(prompt);
+        String response = chatModel.chat(prompt);
         return response;
     }
 }
